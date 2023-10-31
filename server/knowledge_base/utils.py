@@ -332,6 +332,7 @@ class KnowledgeFile:
         if zh_title_enhance:
             if self.ext not in [".md"]:  # Markdown分词器自带标题加强
                 docs = func_zh_title_enhance(docs)
+                save_documents_2_file(docs, self.kb_name, self.filename, "title_enhance_after_documents")
 
         self.splited_docs = docs
         return self.splited_docs

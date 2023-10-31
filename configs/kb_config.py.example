@@ -116,3 +116,8 @@ text_splitter_dict = {
 
 # TEXT_SPLITTER 名称
 TEXT_SPLITTER_NAME = "ChineseRecursiveTextSplitter"
+
+# 知识库未搜索到内容时，是否激活固定回复
+NO_MATCH_ANSWER_ENABLED = False
+# 知识库未搜索到内容时，固定回复的内容
+NO_MATCH_ANSWER = "根据已知信息无法回答该问题"

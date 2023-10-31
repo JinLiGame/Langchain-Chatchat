@@ -1,6 +1,9 @@
+import logging
+
 from fastapi import Body, Request
 from fastapi.responses import StreamingResponse
-from configs import (LLM_MODEL, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD, TEMPERATURE)
+from configs import (LLM_MODEL, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD, TEMPERATURE, NO_MATCH_ANSWER_ENABLED,
+                     NO_MATCH_ANSWER)
 from server.utils import wrap_done, get_ChatOpenAI
 from server.utils import BaseResponse, get_prompt_template
 from langchain.chains import LLMChain
@@ -53,7 +56,20 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             max_tokens=max_tokens,
             callbacks=[callback],
         )
+
+        source_documents = []
         docs = search_docs(query, knowledge_base_name, top_k, score_threshold)
+
+        logging.info(f"knowledge_base_chat_iterator search_docs count:{len(docs)}")
+        if len(docs) == 0:
+            if NO_MATCH_ANSWER_ENABLED:
+                if stream:
+                    yield json.dumps({"answer": NO_MATCH_ANSWER}, ensure_ascii=False)
+                    yield json.dumps({"docs": source_documents}, ensure_ascii=False)
+                else:
+                    yield json.dumps({"answer": NO_MATCH_ANSWER, "docs": source_documents}, ensure_ascii=False)
+                return
+
         context = "\n".join([doc.page_content for doc in docs])
 
         prompt_template = get_prompt_template("knowledge_base_chat", prompt_name)
@@ -69,7 +85,6 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             callback.done),
         )
 
-        source_documents = []
         for inum, doc in enumerate(docs):
             filename = os.path.split(doc.metadata["source"])[-1]
             parameters = urlencode({"knowledge_base_name": knowledge_base_name, "file_name":filename})
