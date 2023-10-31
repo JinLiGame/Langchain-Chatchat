@@ -25,6 +25,8 @@ import io
 from typing import List, Union, Callable, Dict, Optional, Tuple, Generator
 import chardet
 
+from tlbb.utils import save_2_file_split_documents, save_documents_2_file
+
 
 def validate_kb_name(knowledge_base_id: str) -> bool:
     # 检查是否包含预期外的字符或路径攻击关键字
@@ -69,7 +71,8 @@ def load_embeddings(model: str = EMBEDDING_MODEL, device: str = embedding_device
 
 
 LOADER_DICT = {"UnstructuredHTMLLoader": ['.html'],
-               "UnstructuredMarkdownLoader": ['.md'],
+               # "UnstructuredMarkdownLoader": ['.md'],
+               "TextLoader": ['.md'],  # Markdown改为原文加载，以便配合MarkdownHeaderTextSplitter分词器
                "CustomJSONLoader": [".json"],
                "CSVLoader": [".csv"],
                "RapidOCRPDFLoader": [".pdf"],
@@ -149,6 +152,7 @@ def get_loader(loader_name: str, file_path_or_content: Union[str, bytes, io.Stri
     '''
     根据loader_name和文件路径或内容返回文档加载器。
     '''
+    logger.info(f"get_loader loader_name:{loader_name} file_path_or_content:{file_path_or_content}")
     try:
         if loader_name in ["RapidOCRPDFLoader", "RapidOCRLoader"]:
             document_loaders_module = importlib.import_module('document_loaders')
@@ -181,6 +185,8 @@ def get_loader(loader_name: str, file_path_or_content: Union[str, bytes, io.Stri
         loader = DocumentLoader(file_path_or_content, mode="elements")
     elif loader_name == "UnstructuredHTMLLoader":
         loader = DocumentLoader(file_path_or_content, mode="elements")
+    elif loader_name == "TextLoader":
+        loader = DocumentLoader(file_path_or_content, autodetect_encoding=True)
     else:
         loader = DocumentLoader(file_path_or_content)
     return loader
@@ -301,10 +307,16 @@ class KnowledgeFile:
         docs = docs or self.file2docs(refresh=refresh)
         if not docs:
             return []
+        save_2_file_split_documents(docs, self.kb_name, self.filename, "split_pre")
         if self.ext not in [".csv"]:
+            text_splitter_name = self.text_splitter_name
+            if self.ext in [".md"]:
+                text_splitter_name = "MarkdownHeaderTextSplitter"
+
             if text_splitter is None:
-                text_splitter = make_text_splitter(splitter_name=self.text_splitter_name, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-            if self.text_splitter_name == "MarkdownHeaderTextSplitter":
+                text_splitter = make_text_splitter(splitter_name=text_splitter_name, chunk_size=chunk_size,
+                                                   chunk_overlap=chunk_overlap)
+            if text_splitter_name == "MarkdownHeaderTextSplitter":
                 docs = text_splitter.split_text(docs[0].page_content)
                 for doc in docs:
                     # 如果文档有元数据
@@ -314,6 +326,8 @@ class KnowledgeFile:
                 docs = text_splitter.split_documents(docs)
 
         print(f"文档切分示例：{docs[0]}")
+        save_2_file_split_documents(docs, self.kb_name, self.filename, "split_after")
+        save_documents_2_file(docs, self.kb_name, self.filename, "split_after_documents")
         if zh_title_enhance:
             docs = func_zh_title_enhance(docs)
         self.splited_docs = docs
