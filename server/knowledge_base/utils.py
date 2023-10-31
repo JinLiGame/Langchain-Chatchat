@@ -328,8 +328,11 @@ class KnowledgeFile:
         print(f"文档切分示例：{docs[0]}")
         save_2_file_split_documents(docs, self.kb_name, self.filename, "split_after")
         save_documents_2_file(docs, self.kb_name, self.filename, "split_after_documents")
+
         if zh_title_enhance:
-            docs = func_zh_title_enhance(docs)
+            if self.ext not in [".md"]:  # Markdown分词器自带标题加强
+                docs = func_zh_title_enhance(docs)
+
         self.splited_docs = docs
         return self.splited_docs
 
