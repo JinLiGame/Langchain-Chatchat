@@ -7,7 +7,7 @@ from langchain.schema import Document
 from langchain.vectorstores import Milvus
 from sklearn.preprocessing import normalize
 
-from configs import SCORE_THRESHOLD, kbs_config
+from configs import SCORE_THRESHOLD, kbs_config, text_splitter_dict
 
 from server.knowledge_base.kb_service.base import KBService, SupportedVSType, EmbeddingsFunAdapter, \
     score_threshold_process
@@ -69,10 +69,21 @@ class MilvusKBService(KBService):
 
     def do_add_doc(self, docs: List[Document], **kwargs) -> List[Dict]:
         # TODO: workaround for bug #10492 in langchain
+        # langchain中milvus会将第一次传入的docs中的第一个doc.metadata中的keys作为初始化vector_db的fields，并且必须保证每一个doc.metadata中的keys相同才行
+        # 这里doc.metadata只增加了headers，如果有额外的元数据，也需要特殊处理
+        # 经过测试faiss不会出现此问题
+        fields = []
+        headers = text_splitter_dict["MarkdownHeaderTextSplitter"]["headers_to_split_on"]
+        for key, header in headers:
+            fields.append(header)
+
         for doc in docs:
             for k, v in doc.metadata.items():
                 doc.metadata[k] = str(v)
             for field in self.milvus.fields:
+                doc.metadata.setdefault(field, "")
+            # 第一次传入docs时，vector_db还没初始化，self.milvus.fields还是空的，所以需要自己保证每个doc.metadata中的keys相同
+            for field in fields:
                 doc.metadata.setdefault(field, "")
             doc.metadata.pop(self.milvus._text_field, None)
             doc.metadata.pop(self.milvus._vector_field, None)
