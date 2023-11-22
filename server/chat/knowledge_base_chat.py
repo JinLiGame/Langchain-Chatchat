@@ -70,7 +70,9 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                     yield json.dumps({"answer": NO_MATCH_ANSWER, "docs": source_documents}, ensure_ascii=False)
                 return
 
-        context = "\n".join([doc.page_content for doc in docs])
+        # context = "\n".join([doc.page_content for doc in docs])
+        context = "\n".join(
+            [doc.metadata["doc_answer"]["page_content"] if "doc_answer" in doc.metadata else doc.page_content for doc in docs])
 
         prompt_template = get_prompt_template("knowledge_base_chat", prompt_name)
         input_msg = History(role="user", content=prompt_template).to_msg_template(False)
@@ -86,6 +88,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
         )
 
         for inum, doc in enumerate(docs):
+            print(f"page_content:{doc.page_content} score:{doc.score}")
             filename = os.path.split(doc.metadata["source"])[-1]
             parameters = urlencode({"knowledge_base_name": knowledge_base_name, "file_name":filename})
             url = f"/knowledge_base/download_doc?" + parameters

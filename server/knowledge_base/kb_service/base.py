@@ -97,7 +97,16 @@ class KBService(ABC):
 
         if docs:
             self.delete_doc(kb_file)
-            doc_infos = self.do_add_doc(docs, **kwargs)
+            if kb_file.ext in [".faq"]:
+                docs_question = [doc for doc in docs if doc.metadata["doc_category"] == "FAQ" and doc.metadata["doc_sub_category"] == "Question"]
+                docs_answer = [doc for doc in docs if doc.metadata["doc_category"] == "FAQ" and doc.metadata["doc_sub_category"] == "Answer"]
+                doc_infos_answer = self.do_add_doc(docs_answer, **kwargs)
+                for q, a in zip(docs_question, doc_infos_answer):
+                    q.metadata["answer_pk"] = a["id"]
+                doc_infos_question = self.do_add_doc(docs_question, **kwargs)
+                doc_infos = doc_infos_question + doc_infos_answer
+            else:
+                doc_infos = self.do_add_doc(docs, **kwargs)
             status = add_file_to_db(kb_file,
                                     custom_docs=custom_docs,
                                     docs_count=len(docs),
@@ -150,7 +159,21 @@ class KBService(ABC):
                     ):
         embeddings = self._load_embeddings()
         docs = self.do_search(query, top_k, score_threshold, embeddings)
+
+        new_docs = []
+        for doc in docs:
+            # print(f"doc:{doc}")
+            if "doc_sub_category" in doc[0].metadata and doc[0].metadata["doc_sub_category"] == "Question":
+                # print(f"doc1:{doc}")
+                doc_answer = self.get_doc_by_id(doc[0].metadata["answer_pk"])
+                doc[0].metadata["doc_answer"] = doc_answer
+                # print(f"doc2:{doc}")
+                # new_docs.append(doc)
+            # else:
+            #     new_docs.append(doc)
+
         return docs
+        # return new_docs
 
     def get_doc_by_id(self, id: str) -> Optional[Document]:
         return None

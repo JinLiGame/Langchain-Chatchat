@@ -70,18 +70,20 @@ def load_embeddings(model: str = EMBEDDING_MODEL, device: str = embedding_device
     return embeddings_pool.load_embeddings(model=model, device=device)
 
 
-LOADER_DICT = {"UnstructuredHTMLLoader": ['.html'],
-               # "UnstructuredMarkdownLoader": ['.md'],
-               "TextLoader": ['.md'],  # Markdown改为原文加载，以便配合MarkdownHeaderTextSplitter分词器
-               "CustomJSONLoader": [".json"],
-               "CSVLoader": [".csv"],
-               "RapidOCRPDFLoader": [".pdf"],
-               "RapidOCRLoader": ['.png', '.jpg', '.jpeg', '.bmp'],
-               "UnstructuredFileLoader": ['.eml', '.msg', '.rst',
-                                          '.rtf', '.txt', '.xml',
-                                          '.docx', '.epub', '.odt',
-                                          '.ppt', '.pptx', '.tsv'],
-               }
+LOADER_DICT = {
+    "FAQLoader": ['.faq'],
+    "UnstructuredHTMLLoader": ['.html'],
+    # "UnstructuredMarkdownLoader": ['.md'],
+    "TextLoader": ['.md'],  # Markdown改为原文加载，以便配合MarkdownHeaderTextSplitter分词器
+    "CustomJSONLoader": [".json"],
+    "CSVLoader": [".csv"],
+    "RapidOCRPDFLoader": [".pdf"],
+    "RapidOCRLoader": ['.png', '.jpg', '.jpeg', '.bmp'],
+    "UnstructuredFileLoader": ['.eml', '.msg', '.rst',
+                               '.rtf', '.txt', '.xml',
+                               '.docx', '.epub', '.odt',
+                               '.ppt', '.pptx', '.tsv'],
+}
 SUPPORTED_EXTS = [ext for sublist in LOADER_DICT.values() for ext in sublist]
 
 
@@ -154,7 +156,9 @@ def get_loader(loader_name: str, file_path_or_content: Union[str, bytes, io.Stri
     '''
     logger.info(f"get_loader loader_name:{loader_name} file_path_or_content:{file_path_or_content}")
     try:
-        if loader_name in ["RapidOCRPDFLoader", "RapidOCRLoader"]:
+        if loader_name in ["FAQLoader"]:
+            document_loaders_module = importlib.import_module('tlbb.document_loaders')
+        elif loader_name in ["RapidOCRPDFLoader", "RapidOCRLoader"]:
             document_loaders_module = importlib.import_module('document_loaders')
         else:
             document_loaders_module = importlib.import_module('langchain.document_loaders')
@@ -186,6 +190,8 @@ def get_loader(loader_name: str, file_path_or_content: Union[str, bytes, io.Stri
     elif loader_name == "UnstructuredHTMLLoader":
         loader = DocumentLoader(file_path_or_content, mode="elements")
     elif loader_name == "TextLoader":
+        loader = DocumentLoader(file_path_or_content, autodetect_encoding=True)
+    elif loader_name == "FAQLoader":
         loader = DocumentLoader(file_path_or_content, autodetect_encoding=True)
     else:
         loader = DocumentLoader(file_path_or_content)
@@ -280,8 +286,13 @@ class KnowledgeFile:
         self.kb_name = knowledge_base_name
         self.filename = filename
         self.ext = os.path.splitext(filename)[-1].lower()
+        if self.ext in [".csv"] and "faq" in self.filename:
+            suffixes = filename.split(".")
+            self.ext = "." + ".".join(suffixes[-2:])
+
         if self.ext not in SUPPORTED_EXTS:
             raise ValueError(f"暂未支持的文件格式 {self.ext}")
+        print(f"ext:{self.ext}")
         self.filepath = get_file_path(knowledge_base_name, filename)
         self.docs = None
         self.splited_docs = None
@@ -308,7 +319,7 @@ class KnowledgeFile:
         if not docs:
             return []
         save_2_file_split_documents(docs, self.kb_name, self.filename, "split_pre")
-        if self.ext not in [".csv"]:
+        if self.ext not in [".csv", ".faq"]:
             text_splitter_name = self.text_splitter_name
             if self.ext in [".md"]:
                 text_splitter_name = "MarkdownHeaderTextSplitter"
@@ -321,7 +332,8 @@ class KnowledgeFile:
                 for doc in docs:
                     # 如果文档有元数据
                     if doc.metadata:
-                        doc.metadata["source"] = os.path.basename(self.filepath)
+                        # doc.metadata["source"] = os.path.basename(self.filepath)
+                        doc.metadata["source"] = self.filepath
             else:
                 docs = text_splitter.split_documents(docs)
 
@@ -330,7 +342,7 @@ class KnowledgeFile:
         save_documents_2_file(docs, self.kb_name, self.filename, "split_after_documents")
 
         if zh_title_enhance:
-            if self.ext not in [".md"]:  # Markdown分词器自带标题加强
+            if self.ext not in [".md", ".faq"]:  # Markdown分词器自带标题加强
                 docs = func_zh_title_enhance(docs)
                 save_documents_2_file(docs, self.kb_name, self.filename, "title_enhance_after_documents")
 

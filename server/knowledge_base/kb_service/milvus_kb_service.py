@@ -1,3 +1,4 @@
+import shutil
 from typing import List, Dict, Optional
 
 import numpy as np
@@ -62,6 +63,7 @@ class MilvusKBService(KBService):
         if self.milvus.col:
             self.milvus.col.release()
             self.milvus.col.drop()
+        # shutil.rmtree(self.kb_path)
 
     def do_search(self, query: str, top_k: int, score_threshold: float, embeddings: Embeddings):
         self._load_milvus(embeddings=EmbeddingsFunAdapter(embeddings))
@@ -76,6 +78,9 @@ class MilvusKBService(KBService):
         headers = text_splitter_dict["MarkdownHeaderTextSplitter"]["headers_to_split_on"]
         for key, header in headers:
             fields.append(header)
+        fields.append("answer_pk")
+        fields.append("doc_category")
+        fields.append("doc_sub_category")
 
         for doc in docs:
             for k, v in doc.metadata.items():
