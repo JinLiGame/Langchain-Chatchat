@@ -1,6 +1,11 @@
 import os
 import urllib
 from fastapi import File, Form, Body, Query, UploadFile
+from langchain.chains import LLMChain
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+from langchain.schema import SystemMessage, HumanMessage
+
 from configs import (DEFAULT_VS_TYPE, EMBEDDING_MODEL,
                     VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD,
                     CHUNK_SIZE, OVERLAP_SIZE, ZH_TITLE_ENHANCE,
@@ -21,6 +26,14 @@ class DocumentWithScore(Document):
     score: float = None
 
 
+class DocumentWithHash(Document):
+    def __hash__(self):
+        return hash(self.page_content)
+
+    def __eq__(self, other):
+        return self.page_content == other.page_content
+
+
 def search_docs(query: str = Body(..., description="用户输入", examples=["你好"]),
                 knowledge_base_name: str = Body(..., description="知识库名称", examples=["samples"]),
                 top_k: int = Body(VECTOR_SEARCH_TOP_K, description="匹配向量数"),
@@ -33,6 +46,62 @@ def search_docs(query: str = Body(..., description="用户输入", examples=["�
     data = [DocumentWithScore(**x[0].dict(), score=x[1]) for x in docs]
 
     return data
+
+
+async def rag_fusion_search_docs(model: ChatOpenAI,
+                query: str = Body(..., description="用户输入", examples=["你好"]),
+                knowledge_base_name: str = Body(..., description="知识库名称", examples=["samples"]),
+                top_k: int = Body(VECTOR_SEARCH_TOP_K, description="匹配向量数"),
+                score_threshold: float = Body(SCORE_THRESHOLD, description="知识库匹配相关度阈值，取值范围在0-1之间，SCORE越小，相关度越高，取到1相当于不筛选，建议设置在0.5左右", ge=0, le=1),
+                ) -> List[DocumentWithScore]:
+    kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
+    if kb is None:
+        return []
+
+    messages = [
+        SystemMessage(
+            content="You are a helpful assistant that generates multiple search queries based on a single input query."),
+        HumanMessage(content=f"Generate multiple search queries related to: {query}"),
+        HumanMessage(content="OUTPUT (4 queries):"),
+    ]
+    chat_prompt = ChatPromptTemplate.from_messages(messages)
+    chain = LLMChain(prompt=chat_prompt, llm=model)
+    ret = await chain.acall(inputs={})
+    generated_queries = ret["text"].strip().split("\n")
+    print(f"rag_fusion_search_docs generated_queries:{generated_queries}")
+
+    all_results = {}
+    for query in generated_queries:
+        docs = kb.search_docs(query, top_k, score_threshold)
+        search_results = {DocumentWithHash(**x[0].dict()): x[1] for x in docs}
+        # print(f"query:{query}  search_results:{search_results}")
+        all_results[query] = search_results
+
+    reranked_results = reciprocal_rank_fusion(all_results)
+
+    data = [DocumentWithScore(**x[0].dict(), score=x[1]) for x in list(reranked_results.items())[:top_k]]
+    print(f"rag_fusion_search_docs data:{data}")
+    return data
+
+
+# Reciprocal Rank Fusion algorithm
+def reciprocal_rank_fusion(search_results_dict, k=60):
+    fused_scores = {}
+    print("Initial individual search result ranks:")
+    for query, doc_scores in search_results_dict.items():
+        print(f"For query '{query}': {doc_scores}")
+
+    for query, doc_scores in search_results_dict.items():
+        for rank, (doc, score) in enumerate(sorted(doc_scores.items(), key=lambda x: x[1], reverse=False)):
+            if doc not in fused_scores:
+                fused_scores[doc] = 0
+            previous_score = fused_scores[doc]
+            fused_scores[doc] += 1 / (rank + k)
+            print(f"Updating score for {doc} from {previous_score} to {fused_scores[doc]} based on rank {rank} in query '{query}'")
+
+    reranked_results = {doc: score for doc, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)}
+    print("Final reranked results:", reranked_results)
+    return reranked_results
 
 
 def list_files(

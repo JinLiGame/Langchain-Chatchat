@@ -3,7 +3,7 @@ import logging
 from fastapi import Body, Request
 from fastapi.responses import StreamingResponse
 from configs import (LLM_MODEL, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD, TEMPERATURE, NO_MATCH_ANSWER_ENABLED,
-                     NO_MATCH_ANSWER)
+                     NO_MATCH_ANSWER, RAG_FUSION_ENABLED)
 from server.utils import wrap_done, get_ChatOpenAI
 from server.utils import BaseResponse, get_prompt_template
 from langchain.chains import LLMChain
@@ -16,7 +16,7 @@ from server.knowledge_base.kb_service.base import KBService, KBServiceFactory
 import json
 import os
 from urllib.parse import urlencode
-from server.knowledge_base.kb_doc_api import search_docs
+from server.knowledge_base.kb_doc_api import search_docs, rag_fusion_search_docs
 
 
 async def knowledge_base_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
@@ -54,11 +54,14 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             model_name=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
-            callbacks=[callback],
+            # callbacks=[callback],
         )
 
         source_documents = []
-        docs = search_docs(query, knowledge_base_name, top_k, score_threshold)
+        if RAG_FUSION_ENABLED:
+            docs = await rag_fusion_search_docs(model, query, knowledge_base_name, top_k, score_threshold)
+        else:
+            docs = search_docs(query, knowledge_base_name, top_k, score_threshold)
 
         logging.info(f"knowledge_base_chat_iterator search_docs count:{len(docs)}")
         if len(docs) == 0:
@@ -79,6 +82,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
         chat_prompt = ChatPromptTemplate.from_messages(
             [i.to_msg_template() for i in history] + [input_msg])
 
+        model.callbacks = [callback]    # 避免前边的回复也在callbacks里
         chain = LLMChain(prompt=chat_prompt, llm=model)
 
         # Begin a task that runs in the background.

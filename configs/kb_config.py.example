@@ -121,3 +121,9 @@ TEXT_SPLITTER_NAME = "ChineseRecursiveTextSplitter"
 NO_MATCH_ANSWER_ENABLED = False
 # 知识库未搜索到内容时，固定回复的内容
 NO_MATCH_ANSWER = "根据已知信息无法回答该问题"
+
+# RAG-Fusion多query融合策略
+# 1. 将输入的query先用llm生成多个相似的query
+# 2. 然后将每个query进行向量查询
+# 3. 最后将所有query的向量查询结果通过倒数排序融合（RRF）算法重新排序
+RAG_FUSION_ENABLED = False
