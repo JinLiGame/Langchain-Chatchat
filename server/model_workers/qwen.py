@@ -79,7 +79,7 @@ class QwenWorker(ApiModelWorker):
         )
         config = self.get_config()
         self.api_key = config.get("api_key")
-        self.version = version
+        self.version = config.get("version")
 
     def generate_stream_gate(self, params):
         messages = self.prompt_to_messages(params["prompt"])

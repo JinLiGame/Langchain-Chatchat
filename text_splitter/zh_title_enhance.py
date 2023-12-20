@@ -1,6 +1,8 @@
 from langchain.docstore.document import Document
 import re
 
+from configs import text_splitter_dict
+
 
 def under_non_alpha_ratio(text: str, threshold: float = 0.5):
     """Checks if the proportion of non-alpha characters in the text snippet exceeds a given
@@ -94,6 +96,26 @@ def zh_title_enhance(docs: Document) -> Document:
                 title = doc.page_content
             elif title:
                 doc.page_content = f"下文与({title})有关。{doc.page_content}"
+        return docs
+    else:
+        print("文件不存在")
+
+
+def get_nearest_title(doc):
+    headers = text_splitter_dict["MarkdownHeaderTextSplitter"]["headers_to_split_on"]
+    for header in reversed(headers):
+        title = doc.metadata.get(header[1], "")
+        if title != "":
+            return title
+    return ""
+
+
+def zh_title_enhance_md(docs: Document) -> Document:
+    if len(docs) > 0:
+        for doc in docs:
+            title = get_nearest_title(doc)
+            if title != "":
+                doc.page_content = f"{title}：{doc.page_content}"
         return docs
     else:
         print("文件不存在")

@@ -14,6 +14,7 @@ from configs import (
 )
 import importlib
 from text_splitter import zh_title_enhance as func_zh_title_enhance
+from text_splitter import zh_title_enhance_md as func_zh_title_enhance_md
 import langchain.document_loaders
 from langchain.docstore.document import Document
 from langchain.text_splitter import TextSplitter
@@ -342,9 +343,11 @@ class KnowledgeFile:
         save_documents_2_file(docs, self.kb_name, self.filename, "split_after_documents")
 
         if zh_title_enhance:
-            if self.ext not in [".md", ".faq"]:  # Markdown分词器自带标题加强
+            if self.ext == ".md":
+                docs = func_zh_title_enhance_md(docs)
+            else:
                 docs = func_zh_title_enhance(docs)
-                save_documents_2_file(docs, self.kb_name, self.filename, "title_enhance_after_documents")
+            save_documents_2_file(docs, self.kb_name, self.filename, "title_enhance_after_documents")
 
         self.splited_docs = docs
         return self.splited_docs
